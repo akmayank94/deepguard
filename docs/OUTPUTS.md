@@ -100,8 +100,9 @@ DFD fakes are **trimmed sub-clips** of their originals:
 | FaceShifter | 0.491 | 0.511 | — |
 
 **Cause of the width shortcut:**
-- In **282/1,000** Face2Face and NeuralTextures fakes, the width is rounded down to a multiple of 16 (for example 854 → 832, 720 → 704, 1,274 → 1,248).
-- 100% of Face2Face/NeuralTextures fake widths are multiples of 16, against 81.7% of the originals.
+- In **282/1,000** Face2Face and NeuralTextures fakes, the width is rounded down to a **multiple of 32** (for example 854 → 832, 656 → 640, 720 → 704). *Corrected 16 Nov 2026 by re-reading `meta.csv`: the fake width equals floor32 of the original in 282/282 cases at both c23 and c40. The first note said "multiple of 16".*
+- **Also measured from `meta.csv`:** all FF++ videos are yuv444p and all DFD videos yuv420p; c23 and c40 have identical width, height and frame count for all 9,431 pairs.
+- 100% of Face2Face/NeuralTextures fake widths are multiples of 32, against 71.8% of the originals (81.7% are multiples of 16).
 - The height is never changed.
 - Whether the frames were cropped or rescaled is **not yet known**.
 

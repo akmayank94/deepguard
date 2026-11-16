@@ -363,7 +363,7 @@ One rule per flag. Numbers are in OUTPUTS.md, Phase 1.1.
 2. **Fake length** (Face2Face = source length; FaceSwap and NeuralTextures = min; Deepfakes and FaceShifter = target): length is never an input. Frame windows are taken inside `min(len_fake, len_target)`. Phase 1.2 inspects what Face2Face's extra frames contain and records it.
 3. **Width shortcut (Face2Face/NeuralTextures, AUC 0.69–0.77):**
    - Phase 1.2 first tests on sample frames whether the 282 fakes were **cropped or rescaled**.
-   - Then the **same transform is applied to every video whose width is not a multiple of 16**: all real and fake videos of those 282 targets, across all methods.
+   - Then the **same transform is applied to every video whose width is not a multiple of 32**: all real and fake videos of those 282 targets, across all methods. *(Corrected 16 Nov 2026 from "16": the fakes' width is floor32 of the original in 282/282 cases.)*
    - Acceptance: the metadata-only AUC re-run reaches ≤ 0.60 for every method.
    - FaceSwap's 0.61 comes from length only. Length never reaches the model (rule 2), so no transform is needed.
 4. **Right face:** in FF++ fakes, the face is selected by pixel difference against the target original. They are frame-aligned: median background difference 2.0, 0 misaligned. Never use "largest face" (it fails in 21/4,436). Other faces in fake videos are excluded. Detector false positives (logos, toys) are dropped by requiring a face track of at least N frames.
@@ -418,6 +418,41 @@ Each rule names the risk, the fix, and the phase where it is checked.
    - Feedback items enter training only with explicit consent.
 10. **Inputs the public will actually send** (vertical video, screen recordings, no face, many faces, long videos, memes with text, photos of screens) form a routing and robustness checklist in the dev-wild set from Phase 2, not a Phase 6 surprise.
 
+### D-019 — Phase 1.2 acceptance test: FF++/DFD preprocessing · DECIDED 2026-11-16 (confirmed by Mayank)
+Implements D-017 and D-018.2. Preprocessing of the full data starts only after items 1 and 6 pass; Phase 1.2 is DONE only when all nine pass.
+
+1. **One shared package.** `src/deepguard/preprocess` holds decoding, face detection and tracking, cropping and JPEG encoding. The Kaggle notebooks import it from the repo at a recorded git commit; later, the Space imports it too. Its unit tests run in CI.
+   - **Colour test:** the decoder converts YUV to RGB with an explicit matrix and range (the stream's tag if present, otherwise BT.709 for height ≥ 720 and BT.601 below). On a lossless test video with known colours it must match the analytic RGB within ±1 per channel.
+2. **Width fix.**
+   - Sample frames decide whether the 282 narrower Face2Face/NeuralTextures fakes were *cropped* (and at which offset) or *rescaled*, by comparing background pixels.
+   - The winning transform is applied to every FF++ video whose width is not a multiple of 32: the originals and all methods of those 282 targets.
+   - **Pass:** the metadata-only AUC on model-facing properties (decoded width, height, aspect ratio, face-box size and position) is ≤ 0.60 for every method at c23 and c40. File length is still reported, but excluded from this check because it never reaches the model (D-017.2).
+3. **Right face.**
+   - In each fake, the manipulated track is the one with the highest face-level pixel difference against the original (D-017.4/5).
+   - The original's main face is the track its own fakes chose (majority vote; disagreements are flagged).
+   - Tracks shorter than 50% of the sampled frames are dropped as false detections.
+   - **Pass:** Mayank checks 200 random contact sheets by eye and finds 0 wrong faces.
+4. **DFD alignment.**
+   - Each DFD fake's start frame in its original is found by matching downscaled frames.
+   - **Pass:** at least 95% of DFD fakes align, i.e. their background difference after alignment is within the FF++ range. The rest use the official masks or are dropped, with counts reported.
+   - The 19 fakes shorter than 32 frames are dropped; duplicate originals are removed by SHA-256 (D-017.6/7).
+5. **Frames and crops.**
+   - 32 frames per video, sampled by frame index. For an FF++ target group (the original and all its fakes) the indices are shared, spread over the group's shortest length, so a real video and its fakes use the same frames.
+   - Crop: a square of 1.3 × the larger box side around the face, resized to 384 px, JPEG quality 95. The box and 5 landmarks are stored per crop, so faces can be re-aligned later without re-decoding.
+   - c23 is used for detection and selection. c40 reuses the c23 boxes; c23 and c40 frame sizes must be equal, which is checked.
+6. **Face detector chosen by measurement.** On 200 videos (100 FF++, 100 DFD) we compare SCRFD-10G (InsightFace) with MediaPipe full-range, measuring the share of sampled frames where the main face is missed, and seconds per video. The detector with fewer misses wins; speed decides only if the miss rates are within 1 percentage point.
+7. **Master manifest v1.** One row per video:
+   - IDs, method, compression, official split and clean split;
+   - flags `fps_changed`, `width_fixed`, `dfd_dup`, and a `drop_reason`;
+   - the raw file's SHA-256 and the git commit that made it.
+8. **Identity clustering.**
+   - ArcFace embeddings of the main face; videos are linked when cosine similarity ≥ t.
+   - t is tuned on DFD, where the 28 actors are known; the target is cluster purity ≥ 0.95.
+   - **Pass:** applied to FF++, the clustering puts each of the 7 known leak pairs (DATASETS.md §1.4) into the same cluster.
+9. **Budget.** Storage per crop and GPU and CPU time are measured on 1,000 crops first and logged in OUTPUTS.md before the full run.
+
+**Licence note:** the InsightFace models (SCRFD, ArcFace) are for non-commercial research only, which matches D-018.9.
+
 ---
 
 ## 2. Roadmap — no phase starts before the previous phase's acceptance test passes
@@ -427,7 +462,7 @@ No deadline (personal project). Week figures are estimates only; each phase ends
 |---|---|---|---|---|---|
 | 0 Freeze + setup | **DONE** (16 Nov) | 1 | Accounts and secrets; Drive; FF++ + DFD official (verified); Celeb-DF v2 (verified); DFDC rules + download route; v1 frozen (tag `v1.0` + Kaggle); GitHub repo `akmayank94/deepguard` with CI; OUTPUTS.md, DATASETS.md, TERMS.md. Pending outside the project: Deepfake-Eval-2024 approval (needed only in Phase 4) | FF++ + DFD (done) | v1 checksums verified; v1 tagged; repo + CI green; every Tier-A request sent and logged |
 | 1.1 FF++ audit | **DONE** (15 Nov) | — | D-016 | — | All A1–A7 reported; D-017 decided |
-| 1.2 FF++/DFD preprocessing | next | 1–2 | Shared preprocessing package (D-018.2); face tracks; right-face selection; width fix; DFD offset alignment; identity clusters; master manifest v1 | — | D-017 rules implemented; metadata-only AUC ≤ 0.60 for every method; parity test passes; random crop sample checked by eye |
+| 1.2 FF++/DFD preprocessing | **in progress** (test written 16 Nov) | 1–2 | Shared preprocessing package (D-018.2); face tracks; right-face selection; width fix; DFD offset alignment; identity clusters; master manifest v1 | — | **D-019** (9 items) |
 | 1.3 Other face datasets | after 1.2 | 1–2 | Audit + preprocess each, using the same checklist as 1.1 | Celeb-DF v2 (when approved), DFDC subset (10–15 chunks, stream and reduce), DF40 | Each dataset audited (A1–A7 equivalent) before its crops are made |
 | 1.4 AI-media datasets | after 1.2 (can overlap 1.3) | 1–2 | Audit + matched re-encoding (D-018.1) | Community Forensics-Small (images), GenVideo-100K, ShareVeo3 + MSVD reals | Per-domain metadata AUC ≤ 0.60; dataset-ID probe reported |
 | 1.5 Freeze the data | end of Phase 1 | <1 | Cross-dataset de-dup and identity clustering (D-018.3); DF40↔FF++ split check; degradation chain; frozen splits + test vault (D-018.4); dev-wild collection starts | — | 0 cross-split duplicates or identities; splits frozen with SHA-256 |
@@ -497,3 +532,5 @@ The numbers are filled in only from OUTPUTS.md.
 | 2026-11-16 (2) | Celeb-DF v2 obtained (form → instant Drive link) and copied to Drive. Deepfake-Eval-2024 requested. GitHub repo `akmayank94/deepguard` created (private, empty); pushing waits on linking GitHub to Claude. DFDC chunk links are logged-in Kaggle web links (`kaggle.com/c/16880/datadownload/dfdc_train_part_NN.zip`), so a notebook download method is still to be tested (Phase 1.3). Colab notebook `dg_p0_freeze_v1_and_celebdf.ipynb` built and tested with mocks: Celeb-DF → `dg-celebdf-v2`; v1 freeze → `deepguard-v1-frozen` with MANIFEST and a check of the Space's model against `deploy/model.pt`. D-014: removed a personal name. |
 | 2026-11-16 (3) | **Celeb-DF v2 on Kaggle:** `mynkey/dg-celebdf-v2` READY. The zip's SHA-256 is `b22f9d74…cb126fa2` and it holds 6,530 files: 590 Celeb-real, 5,639 Celeb-synthesis, 300 YouTube-real and the test list, exactly as the paper states. **GitHub:** `akmayank94/deepguard` connected. `main` = the v1 snapshot (commit `a1ea01c`); the `v1.0` tag must be created by Mayank in the GitHub UI, because tag pushes are refused from this environment. The v2 structure (`legacy/v1/`, `docs/`, notebooks, `src/deepguard`, CI hygiene checks) is on branch `v2-setup` (commit `47c5dd8`), to be merged after the tag exists. **v1 freeze B1 fixed:** v1's `data/` folder holds dataset *code*, so it is now included; deployed-model provenance was added to `SPACE_CHECK.json`. **DFDC:** a chunk link resolves to a signed `storage.googleapis.com` URL valid about 39 h, so a Kaggle notebook can download chunks from fresh links. TERMS.md created. |
 | 2026-11-16 (4) | **v1 freeze DONE (D-001).** `deepguard-v1-frozen` READY (319 files, 1.44 GB). The Space model is identical to `deploy/model.pt` and `run_v2_full_b3/checkpoint_best.pt` (epoch 52, the reported model). Tag `v1.0` created by Mayank on GitHub; `v2-setup` merged into `main`. Phase 0 is complete except the Deepfake-Eval-2024 approval, which only Phase 4 needs. |
+| 2026-11-16 (5) | D-019 Phase 1.2 acceptance test written and confirmed by Mayank. Dev-wild collection started by Mayank (D-018.5). |
+| 2026-11-16 (6) | **Correction:** the Face2Face/NeuralTextures width rule is *floor to a multiple of 32* (282/282, c23 and c40), not 16 (D-017.3, D-019.2, DATASETS.md, OUTPUTS.md). It was found when the width unit test failed on 854 → 832. Also measured from the audit metadata: FF++ is 4:4:4 (yuv444p), DFD 4:2:0; c23 and c40 frames are the same size for all 9,431 pairs. **Shared package `src/deepguard/preprocess` built** (video, faces, crop, select, align, identity, audit, manifest): 36 tests, including the colour test (±1, six formats) and model tests on SCRFD/ArcFace; CI downloads SCRFD-500M with a SHA-256 check. **Stage A notebook** `dg_p12a_detector_width_budget` built and tested end to end on a mock FF++/DFD set with planted facts (centre crop, DFD offsets 17 and 40, two-face video, short fake), and all of them were recovered. |

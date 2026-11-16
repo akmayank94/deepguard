@@ -14,5 +14,18 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Repository hygiene (no data, weights, secrets or notebook outputs)
         run: python tools/check_repo.py
+      - name: Face-detector model for tests (SCRFD-500M, InsightFace buffalo_sc, non-commercial)
+        uses: actions/cache@v4
+        with:
+          path: ~/models/buffalo_sc
+          key: insightface-buffalo_sc-v0.7
+      - name: Download model if not cached
+        run: |
+          if [ ! -f ~/models/buffalo_sc/det_500m.onnx ]; then
+            mkdir -p ~/models && cd ~/models
+            curl -sSL -o buffalo_sc.zip https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_sc.zip
+            unzip -q buffalo_sc.zip -d buffalo_sc && rm buffalo_sc.zip
+          fi
+          echo "5e4447f50245bbd7966bd6c0fa52938c61474a04ec7def48753668a9d8b4ea3a  $HOME/models/buffalo_sc/det_500m.onnx" | sha256sum -c -
       - name: Tests
-        run: pytest -q
+        run: pytest -q -rs

@@ -66,7 +66,9 @@ manipulated_sequences/<method>/masks/videos/…   (binary masks of changed pixel
   - Deepfakes and FaceShifter: equal to the target.
   - FaceSwap and NeuralTextures: equal to `min(target, source)`.
   - **Face2Face: equal to the source**, so in 496 fakes it is longer than the target. What the extra frames contain is still **to verify**.
-- **Width (measured):** in 282/1,000 Face2Face and NeuralTextures fakes, the width is rounded down to a multiple of 16 (854 → 832, 720 → 704, …); the height is unchanged. Whether the frames were cropped or rescaled is **to verify**.
+- **Width (measured; corrected 16 Nov 2026):** every Face2Face and NeuralTextures fake has width = the original's width **rounded down to a multiple of 32**. That changes 282/1,000 targets: exactly the originals whose width is not a multiple of 32 (854 → 832 ×98, 656 → 640 ×66, 600 → 576 ×48, 720 → 704 ×27, 654 → 640 ×20, …). It holds for 282/282 at both c23 and c40. The height is unchanged. Whether the frames were cropped or rescaled is **to verify** (D-019.2). The first audit note said "multiple of 16", which is true but incomplete: 720 is already a multiple of 16.
+- **Pixel format (measured):** all 6,000 FF++ c23 and c40 videos (originals and fakes) are **yuv444p** (no chroma subsampling); all 3,431 DFD videos are yuv420p.
+- **c23 vs c40 (measured):** width, height and frame count are identical for all 9,431 c23/c40 pairs.
 
 ### 1.4 Official splits
 - **Measured 15 Nov 2026** from `splits/*.json`:
@@ -103,7 +105,7 @@ manipulated_sequences/<method>/masks/videos/…   (binary masks of changed pixel
 | T7 | Every FF++ video is H.264 at CRF 23/40 | Other sources use other codecs, so compression could become a dataset-level shortcut | Apply the same social-media degradation chain to both classes (D-005.4) and run the metadata shortcut audit. |
 | T8 | Third-party copies may be incomplete, re-encoded or renamed | Silent errors | Audit every file (`dg_p1_ffpp_audit.ipynb`) and keep a SHA-256 manifest. |
 | T9 | No audio | Nothing to learn from sound here | FF++ is visual-only training data. |
-| T10 | Face2Face and NeuralTextures fakes have their width rounded down to a multiple of 16 (282 targets) | Resolution or aspect ratio reveals the fake (metadata AUC 0.69–0.77) | Give every video the same width treatment, real and fake (D-017). |
+| T10 | Face2Face and NeuralTextures fakes have their width rounded down to a multiple of 32 (282 targets) | Resolution or aspect ratio reveals the fake (metadata AUC 0.69–0.77) | Give every video the same width treatment, real and fake (D-017). |
 | T11 | DFD fakes are trimmed sub-clips with an unknown start offset; 31 are under 50 frames | Comparing frames at the same index fails, so the wrong face could be picked | Find each fake's offset in its original before face selection, or use the official DFD masks. Drop fakes shorter than the frame window. |
 | T12 | DFD two-actor scenes: the same original file is filed under both actors (7 videos × 2 compression levels) | Identity leakage and duplicate counting | Deduplicate by SHA-256. A two-actor video belongs to **both** actors in identity splits. |
 | T13 | Face2Face fakes follow the source's length (496 are longer than their target) | Frames past the target's end have no matching original | Use only frames inside `min(target, source)` until checked. |

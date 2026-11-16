@@ -41,3 +41,12 @@ Each project term with a plain-language description and where it is used. Kept u
 | Parity test | Proof that the app and the training pipeline give exactly the same inputs for the same video. | D-018.2; CI. |
 | Stream and reduce | Download one chunk, keep only crops and features, delete it, move on. | DFDC and other large sets (D-013). |
 | Signed URL | A time-limited download link (it contains `Expires` and `Signature`). | How DFDC chunks are downloaded (Phase 1.3). |
+| YUV / colour matrix (BT.601, BT.709) | Videos store brightness (Y) and colour (U, V) separately; turning them into RGB needs a matrix and a value range. Different tools pick different defaults. | DeepGuard converts with one written rule (D-019.1). |
+| 4:4:4 / 4:2:0 | How much colour detail is stored: full (4:4:4) or a quarter (4:2:0). | All FF++ videos are 4:4:4, DFD is 4:2:0 (DATASETS.md). |
+| SCRFD | A fast, accurate face detector from InsightFace; gives a box and 5 landmarks (eyes, nose, mouth corners). | Candidate detector (D-019.6). Non-commercial licence. |
+| MediaPipe face detection | Google's light face detector (full-range model for faces far from the camera). | The other candidate (D-019.6). |
+| Face track | The same face followed across the sampled frames of one video. | Short tracks are false detections and are dropped (D-019.3). |
+| Background difference | Average pixel change between a fake and its original outside the faces. Near 2 means the frames line up (only compression noise). | Right-face selection and DFD alignment checks. |
+| ArcFace embedding | A 512-number fingerprint of a face's identity; two photos of the same person give similar fingerprints. | Identity clusters for leakage-free splits (D-019.8). |
+| Contact sheet | A grid of frames saved as one image so a person can check many cases by eye. | Audit flags, detector disagreements, the 200-crop check. |
+| Stage A / stage B (Phase 1.2) | Stage A answers the open questions on samples (detector, width, DFD offset, budget); stage B runs the full preprocessing. | Stage B starts only after stage A passes. |
