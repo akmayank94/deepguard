@@ -127,6 +127,10 @@ manipulated_sequences/<method>/masks/videos/…   (binary masks of changed pixel
   - Not mounted in notebooks. The Data page says it is "not available directly on Kaggle".
   - Download links appear after accepting the rules: `all.zip` (471.84 GB), or **50 chunks `00.zip`–`49.zip`** of 9.03–11.52 GB each.
   - Each chunk holds `.mp4` files plus a `metadata.json` with the columns `filename`, `label` (REAL/FAKE), `original` (the real video a fake was made from) and `split` (always "train").
+- **How a chunk downloads (checked 16 Nov 2026):**
+  - The link on the Data page (`kaggle.com/c/16880/datadownload/dfdc_train_part_NN.zip`) only works when logged in.
+  - It redirects to a **signed Google Cloud Storage URL** (`storage.googleapis.com/kaggle-competitions-detached-data/16880/…?Expires=…&Signature=…`) that is valid for about **39 hours**.
+  - A Kaggle notebook can fetch a chunk from such a URL. The URLs are personal credentials while valid: never commit or share them (CI blocks them).
 - **A FAKE can be a face swap, a voice swap, or both** (Data page).
   - A voice-only fake looks completely real, so for a visual model that label is wrong.
   - Rule: compare each fake with its `original` frame by frame. If the frames are unchanged, it is a voice-only fake. Exclude it from visual training and keep it for the v2.1 voice expert.

@@ -90,7 +90,15 @@ Status labels: **DONE** (implemented and verified) · **DECIDED** (agreed, not y
 
 ## 1. Decision log
 
-### D-001 — Freeze v1 before any v2 work · DECIDED
+### D-001 — Freeze v1 before any v2 work · DONE 2026-11-16
+**Result:**
+- **Code:** GitHub tag `v1.0`.
+- **Model and results:** Kaggle dataset `deepguard-v1-frozen`, 319 files, with SHA-256 manifest.
+- **The v1 baseline for every later comparison is `run_v2_full_b3/checkpoint_best.pt` (epoch 52).** It is byte-identical to the model on the live Space.
+- **Report correction to note:** Celeb-DF clip AUC is 0.7238 in the matching-pipeline results file, against 0.7272 in the report.
+- Numbers in OUTPUTS.md §0.4.
+
+Original plan:
 - GitHub repo `akmayank94/deepguard`, tag `v1.0`, holding the v1 code plus the HF Space code.
 - Private Kaggle dataset `deepguard-v1-frozen`: `model.pt`, the v3 checkpoints, results JSONs and `MANIFEST.csv` with SHA-256 checksums.
 - The Space `mynkey/deepguard` keeps serving v1 until v2 passes Phase 6. v2 gets its own Space (`mynkey/deepguard-v2`) so the two can be shown side by side.
@@ -417,7 +425,7 @@ No deadline (personal project). Week figures are estimates only; each phase ends
 
 | Phase | Status | Est. weeks | Work | Datasets entering | Acceptance test (draft) |
 |---|---|---|---|---|---|
-| 0 Freeze + setup | **in progress** | 1 | Done: accounts and secrets, Drive folders, FF++ access, download, upload and verification, DFDC rules accepted, OUTPUTS.md. Left: D-001 v1 freeze; GitHub repo `deepguard-v2` with all notebooks + CI; TERMS.md; Celeb-DF and Deepfake-Eval-2024 requests | FF++ + DFD (done) | v1 checksums verified; v1 tagged; repo + CI green; every Tier-A request sent and logged |
+| 0 Freeze + setup | **DONE** (16 Nov) | 1 | Accounts and secrets; Drive; FF++ + DFD official (verified); Celeb-DF v2 (verified); DFDC rules + download route; v1 frozen (tag `v1.0` + Kaggle); GitHub repo `akmayank94/deepguard` with CI; OUTPUTS.md, DATASETS.md, TERMS.md. Pending outside the project: Deepfake-Eval-2024 approval (needed only in Phase 4) | FF++ + DFD (done) | v1 checksums verified; v1 tagged; repo + CI green; every Tier-A request sent and logged |
 | 1.1 FF++ audit | **DONE** (15 Nov) | — | D-016 | — | All A1–A7 reported; D-017 decided |
 | 1.2 FF++/DFD preprocessing | next | 1–2 | Shared preprocessing package (D-018.2); face tracks; right-face selection; width fix; DFD offset alignment; identity clusters; master manifest v1 | — | D-017 rules implemented; metadata-only AUC ≤ 0.60 for every method; parity test passes; random crop sample checked by eye |
 | 1.3 Other face datasets | after 1.2 | 1–2 | Audit + preprocess each, using the same checklist as 1.1 | Celeb-DF v2 (when approved), DFDC subset (10–15 chunks, stream and reduce), DF40 | Each dataset audited (A1–A7 equivalent) before its crops are made |
@@ -488,3 +496,5 @@ The numbers are filled in only from OUTPUTS.md.
 | 2026-11-15 (8) | Phase 1.1 audit run on the official copy: upload verified byte for byte (18,862/18,862); results in the new OUTPUTS.md. D-016 DONE. D-017 data rules proposed (speed, length, width shortcut, right face, small edits, DFD offset and duplicates, split leakage). DATASETS.md updated with measured facts and traps T10–T13. |
 | 2026-11-16 | D-017 confirmed by Mayank (DECIDED). D-018 base-strength rules added: source-label confounding, one shared preprocessing path, cross-dataset identities (DF40↔FF++), locked test vault, dev/test wild sets, per-source false-positive rate, reproducibility, budgets, licences, public-input checklist. Roadmap split into Phases 1.1–1.5, with status and datasets per phase. |
 | 2026-11-16 (2) | Celeb-DF v2 obtained (form → instant Drive link) and copied to Drive. Deepfake-Eval-2024 requested. GitHub repo `akmayank94/deepguard` created (private, empty); pushing waits on linking GitHub to Claude. DFDC chunk links are logged-in Kaggle web links (`kaggle.com/c/16880/datadownload/dfdc_train_part_NN.zip`), so a notebook download method is still to be tested (Phase 1.3). Colab notebook `dg_p0_freeze_v1_and_celebdf.ipynb` built and tested with mocks: Celeb-DF → `dg-celebdf-v2`; v1 freeze → `deepguard-v1-frozen` with MANIFEST and a check of the Space's model against `deploy/model.pt`. D-014: removed a personal name. |
+| 2026-11-16 (3) | **Celeb-DF v2 on Kaggle:** `mynkey/dg-celebdf-v2` READY. The zip's SHA-256 is `b22f9d74…cb126fa2` and it holds 6,530 files: 590 Celeb-real, 5,639 Celeb-synthesis, 300 YouTube-real and the test list, exactly as the paper states. **GitHub:** `akmayank94/deepguard` connected. `main` = the v1 snapshot (commit `a1ea01c`); the `v1.0` tag must be created by Mayank in the GitHub UI, because tag pushes are refused from this environment. The v2 structure (`legacy/v1/`, `docs/`, notebooks, `src/deepguard`, CI hygiene checks) is on branch `v2-setup` (commit `47c5dd8`), to be merged after the tag exists. **v1 freeze B1 fixed:** v1's `data/` folder holds dataset *code*, so it is now included; deployed-model provenance was added to `SPACE_CHECK.json`. **DFDC:** a chunk link resolves to a signed `storage.googleapis.com` URL valid about 39 h, so a Kaggle notebook can download chunks from fresh links. TERMS.md created. |
+| 2026-11-16 (4) | **v1 freeze DONE (D-001).** `deepguard-v1-frozen` READY (319 files, 1.44 GB). The Space model is identical to `deploy/model.pt` and `run_v2_full_b3/checkpoint_best.pt` (epoch 52, the reported model). Tag `v1.0` created by Mayank on GitHub; `v2-setup` merged into `main`. Phase 0 is complete except the Deepfake-Eval-2024 approval, which only Phase 4 needs. |

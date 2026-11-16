@@ -22,6 +22,26 @@
 - **Mount path in notebooks:** `/kaggle/input/datasets/mynkey/<dataset>/original_sequences/…`. Kaggle drops the zip-name folder.
 - **Integrity:** the audit's SHA-256 manifest matches the Drive manifest **18,862 / 18,862 files** (bytes and hashes), with 0 missing and 0 extra. The Kaggle copy is byte-identical to the official download.
 
+### 0.3 Celeb-DF v2 (Colab `dg_p0_freeze_v1_and_celebdf.ipynb`, Part A, 16 Nov 2026)
+- **Source:** the official `Celeb-DF-v2.zip`, 9,952,957,051 bytes, SHA-256 `b22f9d74d4b67bba698677fa2a05f84b26d8250258424a97c940ba94cb126fa2`.
+- **Contents:** 6,530 files: Celeb-real 590 (0.95 GB), Celeb-synthesis 5,639 (8.51 GB), YouTube-real 300 (0.70 GB), `List_of_testing_videos.txt`. These match the paper.
+- **Stored at:** `Drive/DeepGuard/raw/celebdf/`, with `celebdf_zip_listing.csv` (path, size, CRC32 per file), and the private Kaggle dataset `mynkey/dg-celebdf-v2`.
+
+### 0.4 v1 freeze (D-001; same notebook, Part B, 16 Nov 2026)
+- **Kaggle snapshot:** private dataset `mynkey/deepguard-v1-frozen`, 319 files, 1.44 GB:
+  - 24 checkpoints;
+  - results JSONs, figures and the full code of the original project folder;
+  - `MANIFEST.csv` (SHA-256), plus a copy in `Drive/DeepGuard/frozen/v1/`.
+- **Live Space** `mynkey/deepguard` at commit `a727641a95911cc596045122ae9a3ce7afa76ac0`:
+  - its `model.pt` SHA-256 is `9026cadc…bfc1390`;
+  - it is **identical** to `deploy/model.pt` **and to `checkpoints/run_v2_full_b3/checkpoint_best.pt`**.
+- **The official v1 model is `run_v2_full_b3`, epoch 52.** Its own results files (`run_v2_full_b3/test_results.json` and `celebdf_official_results_FIXED.json`) give:
+  - FF++ validation AUC 0.9158;
+  - FF++ test AUC **0.8781**, accuracy 0.823, F1 0.797;
+  - per method: Deepfakes 0.913, FaceSwap 0.797, NeuralTextures 0.789, FaceShifter 0.927, DeepFakeDetection 0.966. **Face2Face is missing from the per-method results.**
+  - Celeb-DF v2 official test (516 clips: 177 real, 339 fake): clip AUC **0.7238** (the report says 0.7272), frame AUC 0.690.
+- **GitHub:** `akmayank94/deepguard`, tag `v1.0` = commit `a1ea01c` (v1 code, the first demo, the Space app).
+
 ---
 
 ## Phase 1.1 — FF++ / DFD audit (Kaggle `dg_p1_ffpp_audit`, version run 15 Nov 2026)
