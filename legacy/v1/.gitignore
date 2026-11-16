@@ -1,0 +1,17 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+data/
+cache/
+checkpoints/
+*.onnx
+*.h5
+*.hdf5
+notebooks/.ipynb_checkpoints/
+*.egg-info/
+dist/
+build/
+.DS_Store
+Thumbs.db

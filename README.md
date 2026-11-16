@@ -1,40 +1,38 @@
-# DeepGuard v1 — Robust Deepfake Detection (B.Sc. project, frozen)
+# DeepGuard v2 — deepfake and AI-generated media detector
 
-This is **DeepGuard v1**, frozen as tag `v1.0` on 16 Nov 2026 before work on v2 began (decision D-001).
+**Status: Phase 1 (data foundation), in progress.** v1, the B.Sc. project presented at ICET-AICS 2026, is frozen at tag `v1.0` and kept in `legacy/v1/`. Its live demo is [`mynkey/deepguard`](https://huggingface.co/spaces/mynkey/deepguard).
 
-v1 was presented at **ICET-AICS 2026** (Ramanujan College, University of Delhi). The live demo is the Hugging Face Space [`mynkey/deepguard`](https://huggingface.co/spaces/mynkey/deepguard).
+DeepGuard answers one question for the public: **"Is this real, or made or changed by AI?"** It covers face-swapped and reenacted videos, fully AI-generated video, and AI images. Voice comes in v2.1.
 
-## What v1 is
-- **A five-branch video deepfake detector** (22.18 M parameters):
-  - A: EfficientNet-B3 on aligned face crops;
-  - B: EfficientNet-B0 on an inter-channel high-frequency difference image;
-  - C: an MLP on a 9,369-d block-energy + DCCM vector;
-  - D: PRNU statistics;
-  - E: rPPG statistics;
-  - all fused by a softmax attention gate.
-- **Training data:** FaceForensics++ C23, video-level split 70/15/15.
-- **Reported results:**
-  - FF++ validation AUC 0.9158;
-  - FF++ test AUC 0.8781;
-  - Celeb-DF v2 test AUC 0.7272.
+## Design in one paragraph
+DeepGuard v2 is a multi-expert system:
+- face manipulation;
+- generated media;
+- motion geometry;
+- forensic signals;
+- provenance (C2PA).
 
-## Layout at this tag
+Each expert runs on frozen foundation encoders (CLIP / DINOv2) with light, parameter-efficient adaptation. The experts' scores go through a calibrated fusion that answers **Likely real / Uncertain / Likely AI**, with evidence for each verdict. Every design choice, and the evidence behind it, is recorded in [`docs/DECISIONS.md`](docs/DECISIONS.md).
+
+## How the project is run
+- **Decisions before results:** each phase writes its acceptance test into `DECISIONS.md` before it runs, and no phase starts until the previous one passes.
+- **Leakage and shortcut controls:**
+  - splits by identity, source video and generator;
+  - cross-dataset de-duplication;
+  - metadata-only shortcut audits;
+  - a locked test vault (D-005, D-017, D-018).
+- **Only measured numbers are reported**, each with the run that produced it: [`docs/OUTPUTS.md`](docs/OUTPUTS.md).
+- **Compute is entirely free cloud:** Kaggle for preprocessing and training, Colab for data transfer, Hugging Face ZeroGPU for the app. Data never lives on a laptop.
+
+## Repository layout
 | Path | Contents |
 |---|---|
-| repo root | Training, feature, evaluation and preprocessing code, as used on the original training machine (`main_v2.py`, `scripts/preprocess_final.py`, `features/`, `contourlet/`, `models/`, `train/`, `eval/`). `app/` is empty in the original project. |
-| `deploy/` | The first Streamlit demo (superseded: it fed zeros to branches C–E). The model file is not in git. |
-| `space/` | The Gradio app that runs on the Hugging Face Space. Its inference pipeline matches the training code exactly (0.0 difference). |
-| `results_figures/` | Figures used in the report. |
+| `docs/` | `DECISIONS.md` (design log), `DATASETS.md` (dataset facts and traps), `OUTPUTS.md` (measured results), `TERMS.md` (glossary) |
+| `notebooks/phase0/` | Colab notebooks: official FF++ download → Drive, Drive → private Kaggle datasets, Celeb-DF upload and v1 freeze |
+| `notebooks/phase1/` | Kaggle notebooks: the FF++/DFD data audit (Phase 1.1); preprocessing comes next |
+| `src/deepguard/` | The shared package used by both the notebooks and the app (D-018.2) |
+| `tests/`, `tools/check_repo.py` | CI: tests plus hygiene checks (no data, weights, secrets or notebook outputs in git) |
+| `legacy/v1/` | v1 code (the snapshot at tag `v1.0`) |
 
-## What is not in git
-- **Data:** FF++ and Celeb-DF are licensed and never committed.
-- **Checkpoints, `model.pt` and results JSONs:** stored in the private Kaggle dataset `mynkey/deepguard-v1-frozen`, with a SHA-256 `MANIFEST.csv`. That dataset is the complete snapshot of the original project folder, including scripts missing from this export (for example `main_v2_aug.py` and `main_v2_spatial.py`).
-- **`.env`:** removed. It only held local Windows data paths.
-
-## Known issues (why v2 exists)
-These are documented in `docs/DECISIONS.md` on the main branch, §0.2.
-- Branch C never called its contourlet transform.
-- The 9,369-d vector is position-specific.
-- Branch gains sit inside the statistical noise.
-- PRNU and rPPG are per-clip constants.
-- All training fakes come from 2016–2020 methods.
+## Data
+Licensed datasets (FaceForensics++, Celeb-DF, DFDC, DF40 …) are obtained from their official sources under their terms. They are stored privately and **never committed or redistributed**. See `docs/DATASETS.md`.
