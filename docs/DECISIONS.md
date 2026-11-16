@@ -432,13 +432,12 @@ No deadline (personal project). Week figures are estimates only; each phase ends
 | 1.4 AI-media datasets | after 1.2 (can overlap 1.3) | 1–2 | Audit + matched re-encoding (D-018.1) | Community Forensics-Small (images), GenVideo-100K, ShareVeo3 + MSVD reals | Per-domain metadata AUC ≤ 0.60; dataset-ID probe reported |
 | 1.5 Freeze the data | end of Phase 1 | <1 | Cross-dataset de-dup and identity clustering (D-018.3); DF40↔FF++ split check; degradation chain; frozen splits + test vault (D-018.4); dev-wild collection starts | — | 0 cross-split duplicates or identities; splits frozen with SHA-256 |
 | 2 Embedding bank + harness | — | 2 | CLIP-L and DINOv2-L embeddings; linear probes; harness for P1–P5; reproduce a published checkpoint | dev-wild (growing) | Harness reproduces published AUC within ±0.02 on ≥ 2 datasets |
-| 2 Embedding bank + harness | 2 | Extract CLIP-L and DINOv2-L embeddings (fp16 shards); linear probes; evaluation harness for P1–P5; reproduce one published checkpoint (Effort, DeepfakeBench) | Harness reproduces published AUC within ±0.02 on ≥ 2 datasets |
-| 3 Experts | 4–5 | E1 (adapter + temporal pooling), E2, E3, E4 ablation (D-011); 3 seeds each | Each expert beats its linear probe on its protocol (P2 for E1, P3 for E2/E3) |
-| 4 Fusion + uncertainty | 1–2 | Calibration split, fusion, temperature scaling, three-way thresholds; DeepGuard-Wild locked test finished; **P4 run once** (Deepfake-Eval-2024 + Wild locked test) | ECE ≤ 0.05; D-007 targets checked and reported |
-| 5 Robustness | 1 | P5 degradation curves; failure analysis per generator | Curves reported; no expert drops > 0.10 AUC at CRF 30 without being flagged |
-| 6 Product v2.0 | 3 | Space v2 (API), Vercel site, evidence cards, heatmaps, reports, C2PA, CI + parity tests | Parity test PASS; p95 latency ≤ 15 s; site reviewed |
-| 7 Reach | 2 | Telegram bot, quiz, Hindi UI, feedback queue, MCP server, model-health page | Each feature works end-to-end on the public link |
-| 8 Voice (v2.1) + release | 2 | E6, write-up, model cards, README, v2 freeze | Release checklist complete |
+| 3 Experts | — | 4–5 | E1 (adapter + temporal pooling), E2, E3, E4 ablation (D-011); 3 seeds each | Phase-1 face + AI-media sets | Each expert beats its linear probe on its protocol (P2 for E1, P3 for E2/E3) |
+| 4 Fusion + uncertainty | — | 1–2 | Calibration split, fusion, temperature scaling, three-way thresholds; DeepGuard-Wild locked test finished; **P4 run once** (Deepfake-Eval-2024 + Wild locked test) | Deepfake-Eval-2024, Wild locked test | ECE ≤ 0.05; D-007 targets checked and reported |
+| 5 Robustness | — | 1 | P5 degradation curves; failure analysis per generator | — | Curves reported; no expert drops > 0.10 AUC at CRF 30 without being flagged |
+| 6 Product v2.0 | — | 3 | Space v2 (API), Vercel site, evidence cards, heatmaps, reports, C2PA, CI + parity tests | — | Parity test PASS; p95 latency ≤ 15 s; site reviewed |
+| 7 Reach | — | 2 | Telegram bot, quiz, Hindi UI, feedback queue, MCP server, model-health page | — | Each feature works end-to-end on the public link |
+| 8 Voice (v2.1) + release | — | 2 | E6, write-up, model cards, README, v2 freeze | In-the-Wild audio | Release checklist complete |
 
 Phases 6–7 can start in parallel once Phase 4 passes. Waiting for dataset approvals runs in parallel with setup work.
 
