@@ -1,0 +1,43 @@
+mode: pilot
+
+data:
+  data_root: ${DATA_ROOT}
+  pilot: true
+  pilot_real: 100
+  pilot_fake_per_type: 20          # 20 × 5 types = 100 fake total
+  frames_per_clip: 20
+  train_split: 0.70
+  val_split: 0.15
+  test_split: 0.15
+  seed: 42
+
+contourlet:
+  levels: 2
+  directions: [4, 8]               # level 1: 4 dirs, level 2: 8 dirs
+  block_sizes: [8, 16, 32]         # multi-scale energy blocks
+  dccm_offsets: [[0,1],[1,0],[1,1],[1,-1]]  # +anti-diagonal
+
+model:
+  efficientnet_variant: b0
+  efficientnet_dropout: 0.3
+  mlp_dims: [512, 256]
+  mlp_dropout: [0.3, 0.2]
+  fusion_hidden: 256
+  classifier_dropout: 0.2
+
+training:
+  epochs: 50
+  batch_size: 32
+  lr_backbone: 1.0e-4
+  lr_heads: 1.0e-3
+  weight_decay: 1.0e-4
+  label_smoothing: 0.1
+  grad_clip: 1.0
+  early_stop_patience: 10
+  mixed_precision: true
+  overfit_alert_gap: 0.05          # alert if train-val AUC gap > 5%
+
+cache:
+  enabled: true
+  cache_dir: ${CACHE_DIR}
+  force_recompute: false

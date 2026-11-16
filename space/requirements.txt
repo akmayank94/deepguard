@@ -1,0 +1,9 @@
+# Pinned to match the training environment where it matters (timm, mediapipe, numpy)
+torch==2.8.0
+torchvision==0.23.0
+timm==0.9.16
+mediapipe==0.10.14
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+scipy==1.13.1
+Pillow>=10.3,<12
