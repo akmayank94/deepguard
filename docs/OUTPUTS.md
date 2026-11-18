@@ -126,3 +126,38 @@ DFD fakes are **trimmed sub-clips** of their originals:
 
 ### Phase 1.1 acceptance (D-016)
 A1–A7 are all reported. The flags have decisions proposed in D-017, waiting for Mayank's confirmation.
+
+---
+
+## Phase 1.2 stage A — detector, width, DFD pilot, budget (Kaggle `dg_p12a_detector_width_budget`, 18 Nov 2026)
+**Run:**
+- Package commit `50035f4`, GPU T4, 27.4 min.
+- Python 3.13.16, numpy 2.1.3, OpenCV 4.14.0, PyAV 19.0.2, onnxruntime 1.32.0 (CUDA in use).
+- Model SHA-256 values verified.
+- Package tests on Kaggle: 35 passed, 1 skipped (MediaPipe, not installed in the main environment).
+- Files: `p12a_results.zip`.
+
+**Inventory (c23):** 9,431 videos, with frame-count medians as expected (FF++ 457.5, FaceSwap/NeuralTextures 375, DFD fakes 724.5). Pixel formats: FF++ all yuv444p, DFD all yuv420p. **282** FF++ originals have a width that is not a multiple of 32, matching the audit.
+
+**Width test (D-019.2), 60 targets × 2 methods × 4 frames = 480 frames, all 22 width values:**
+- **480/480 frames are best explained by a centre crop.** The offset is `(w − floor32(w)) // 2` in 100% of frames, for example 854 → columns 11..842.
+- Background error: crop median ≈ 1.3 (0.73–1.99 per width), against rescale ≈ 9–19. The rescale error is at least 1.95× the crop error in every frame. The closest cases are widths 642/644, where only 2–4 columns are removed.
+
+**Detector (D-019.6):**
+- **SCRFD-10G:** main face found in 3,199/3,200 FF++ sampled frames (100 videos).
+- **DFD (100 videos):** median 30 of 32 frames, mean 27.5, minimum 9. 288 short tracks against 97 on FF++. Losses concentrate in walking and camera-pan scenes.
+- **Speed:** 1.05 s of detection per video (32 frames, GPU); decoding takes 7.1 s per video in the comparison, with DFD at 1080p the slowest.
+- **MediaPipe could not be compared.** Kaggle now runs Python 3.13, where `mediapipe==0.10.14` does not exist (available versions are 0.10.30 and later), and the newer releases no longer include the legacy `solutions.face_detection` full-range detector.
+
+**DFD offset pilot (D-019.4), 50 fakes:**
+- Background difference after alignment: median 1.22, and 41/50 (82%) are within the limit of 8. That is below the 95% target.
+- **Only 25/50 show a clean frame-exact match** (error < 1 and a distinct minimum, margin ≥ 1.3).
+- 9/50 match no offset at all: best error 4–26, margin ≈ 1.0. Most of these are walking, pan and two-actor scenes.
+- 16 more pass the background limit without a distinct minimum.
+
+**Budget (D-019.9), 971 real crops (16 FF++ + 16 DFD videos):**
+- Crop size ≈ 28.8 KB (JPEG q95, 384 px).
+- Full run (c23 + c40, 32 frames): **≈ 16.6 GB** (FF++ 10.6 GB, DFD 6.0 GB).
+- Decoding ≈ 3.3 h (FF++) + 7.6 h (DFD) for one process, so about 3 h with 4 processes.
+- Detection on c23 ≈ 1.8 GPU-hours. Cropping ≈ 0.4 h.
+- 8 sample crops checked by eye: the face is centred and the colours are natural.

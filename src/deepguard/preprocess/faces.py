@@ -148,36 +148,76 @@ class ScrfdDetector:
         return dets
 
 
+MEDIAPIPE_FULL_RANGE = "face_detection_full_range_sparse.tflite"
+MEDIAPIPE_FULL_RANGE_SHA256 = "2c3728e6da56f21e21a320433396fb06d40d9088f2247c05e5635a688d45dfe1"
+
+
 class MediaPipeDetector:
-    """MediaPipe face detection, full-range model (model_selection=1)."""
+    """MediaPipe BlazeFace full-range detector.
+
+    Two APIs, same model: MediaPipe <= 0.10.2x has the legacy ``solutions`` API
+    (model_selection=1 = ``face_detection_full_range_sparse.tflite``, bundled);
+    newer releases (0.10.30+, 1.x) only have the Tasks API, which needs the model
+    file passed as ``model_path``. Passing ``model_path`` forces the Tasks API.
+    """
 
     name = "mediapipe"
 
-    def __init__(self, score_thresh: float = 0.5, model_selection: int = 1):
+    def __init__(self, score_thresh: float = 0.5, model_path: str | None = None):
         import mediapipe as mp
 
-        self._fd = mp.solutions.face_detection.FaceDetection(
-            model_selection=model_selection, min_detection_confidence=score_thresh)
+        self._mp = mp
+        if model_path is None and hasattr(mp, "solutions"):
+            self.api = "solutions"
+            self._fd = mp.solutions.face_detection.FaceDetection(
+                model_selection=1, min_detection_confidence=score_thresh)
+        else:
+            if model_path is None:
+                raise ValueError(f"MediaPipe {mp.__version__} has no legacy API: pass "
+                                 f"model_path to {MEDIAPIPE_FULL_RANGE}")
+            from mediapipe.tasks import python as mpt
+            from mediapipe.tasks.python import vision
+
+            self.api = "tasks"
+            self._fd = vision.FaceDetector.create_from_options(vision.FaceDetectorOptions(
+                base_options=mpt.BaseOptions(model_asset_path=str(model_path)),
+                min_detection_confidence=score_thresh))
+
+    @staticmethod
+    def _finish(box, score, pts, w, h) -> Detection | None:
+        box[[0, 2]] = np.clip(box[[0, 2]], 0, w)
+        box[[1, 3]] = np.clip(box[[1, 3]], 0, h)
+        if box[2] - box[0] < 2 or box[3] - box[1] < 2:
+            return None
+        # MediaPipe order: right eye, left eye, nose tip, mouth centre, ears.
+        # Map to InsightFace order (left-of-image eye first) with the mouth
+        # centre repeated for both mouth corners (no corners in BlazeFace).
+        kps = np.stack([pts[0], pts[1], pts[2], pts[3], pts[3]]).astype(np.float32)
+        return Detection(box.astype(np.float32), float(score), kps)
 
     def detect(self, rgb: np.ndarray) -> list[Detection]:
         h, w = rgb.shape[:2]
-        res = self._fd.process(rgb)
         out: list[Detection] = []
-        for d in res.detections or []:
-            bb = d.location_data.relative_bounding_box
-            box = np.array([bb.xmin * w, bb.ymin * h, (bb.xmin + bb.width) * w,
-                            (bb.ymin + bb.height) * h], np.float32)
-            box[[0, 2]] = np.clip(box[[0, 2]], 0, w)
-            box[[1, 3]] = np.clip(box[[1, 3]], 0, h)
-            if box[2] - box[0] < 2 or box[3] - box[1] < 2:
-                continue
-            kp = d.location_data.relative_keypoints
-            # MediaPipe order: right eye, left eye, nose tip, mouth centre, ears.
-            # Map to InsightFace order (left-of-image eye first) with the mouth
-            # centre repeated for both mouth corners; flagged by name in manifests.
-            pts = np.array([[p.x * w, p.y * h] for p in kp[:4]], np.float32)
-            kps = np.stack([pts[0], pts[1], pts[2], pts[3], pts[3]])
-            out.append(Detection(box, float(d.score[0]), kps))
+        if self.api == "solutions":
+            res = self._fd.process(rgb)
+            for d in res.detections or []:
+                bb = d.location_data.relative_bounding_box
+                box = np.array([bb.xmin * w, bb.ymin * h, (bb.xmin + bb.width) * w,
+                                (bb.ymin + bb.height) * h], np.float32)
+                pts = np.array([[p.x * w, p.y * h] for p in d.location_data.relative_keypoints[:4]])
+                det = self._finish(box, d.score[0], pts, w, h)
+                if det is not None:
+                    out.append(det)
+            return out
+        img = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
+        for d in self._fd.detect(img).detections:
+            bb = d.bounding_box
+            box = np.array([bb.origin_x, bb.origin_y, bb.origin_x + bb.width,
+                            bb.origin_y + bb.height], np.float32)
+            pts = np.array([[p.x * w, p.y * h] for p in d.keypoints[:4]])
+            det = self._finish(box, d.categories[0].score, pts, w, h)
+            if det is not None:
+                out.append(det)
         return out
 
     def close(self):

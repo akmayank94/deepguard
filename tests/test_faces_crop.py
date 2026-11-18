@@ -87,10 +87,32 @@ def test_scrfd_finds_both_faces(name, rel):
     assert a.kps[0, 0] < a.kps[1, 0]          # image-left eye first
 
 
+def _mp_boxes(**kw):
+    d = F.make_detector("mediapipe", **kw)
+    dets = sorted(d.detect(_canvas()), key=lambda x: x.box[0])
+    d.close()
+    return d.api, dets
+
+
 def test_mediapipe_finds_both_faces():
     pytest.importorskip("skimage")
-    pytest.importorskip("mediapipe")
-    d = F.make_detector("mediapipe")
-    dets = d.detect(_canvas())
-    d.close()
-    assert len(dets) == 2
+    mp = pytest.importorskip("mediapipe")
+    if not hasattr(mp, "solutions"):
+        pytest.skip("legacy MediaPipe API not in this version (Tasks test covers it)")
+    api, dets = _mp_boxes()
+    assert api == "solutions" and len(dets) == 2
+
+
+def test_mediapipe_tasks_api_same_boxes():
+    """New MediaPipe (Tasks API) with the full-range file gives the legacy boxes."""
+    pytest.importorskip("skimage")
+    mp = pytest.importorskip("mediapipe")
+    if hasattr(mp, "solutions"):
+        pytest.skip("old MediaPipe: its Tasks graph only supports the short-range model")
+    p = model_path("mediapipe", F.MEDIAPIPE_FULL_RANGE)
+    api, dets = _mp_boxes(model_path=str(p))
+    assert api == "tasks" and len(dets) == 2
+    # boxes measured with the legacy API (MediaPipe 0.10.14) on the same canvas
+    legacy = [[223, 167, 325, 270], [938, 175, 1026, 263]]
+    for a, b in zip(dets, legacy):
+        assert np.abs(a.box - np.array(b)).max() <= 4

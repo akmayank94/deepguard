@@ -153,6 +153,23 @@ for pack, url in PACKS.items():
         sh(f"curl -sSL -o {z} {url}")
         with zipfile.ZipFile(z) as zz: zz.extractall(MODELS / pack)
         z.unlink()
+# MediaPipe BlazeFace full-range (Apache-2.0): the file the old API used for model_selection=1.
+# Source 1: Google's MediaPipe asset storage. Source 2 (fallback): copied out of the official
+# mediapipe 0.10.14 wheel on PyPI, which bundles it. Either way the SHA-256 must match.
+MP_REL = "mediapipe/" + F.MEDIAPIPE_FULL_RANGE
+SHA[MP_REL] = F.MEDIAPIPE_FULL_RANGE_SHA256
+mp_file = MODELS / MP_REL
+if not mp_file.exists():
+    mp_file.parent.mkdir(parents=True, exist_ok=True)
+    sh(f"curl -sSL -f -o {mp_file} https://storage.googleapis.com/mediapipe-assets/{F.MEDIAPIPE_FULL_RANGE}", check=False)
+    if not mp_file.exists() or sha256(mp_file) != F.MEDIAPIPE_FULL_RANGE_SHA256:
+        log("Asset storage failed; taking the file from the mediapipe 0.10.14 wheel ...")
+        wd = WORK / "mp_wheel"; shutil.rmtree(wd, ignore_errors=True)
+        sh(f"{sys.executable} -m pip download -q --no-deps --only-binary=:all: --python-version 3.10 "
+           f"--platform manylinux_2_17_x86_64 mediapipe==0.10.14 -d {wd}")
+        whl = next(wd.glob("*.whl"))
+        with zipfile.ZipFile(whl) as zz:
+            mp_file.write_bytes(zz.read(f"mediapipe/modules/face_detection/{F.MEDIAPIPE_FULL_RANGE}"))
 for rel, want in SHA.items():
     got = sha256(MODELS / rel)
     assert got == want, f"{rel}: SHA-256 {got} != {want}"
@@ -320,8 +337,11 @@ mp_script = OUT / "run_mediapipe.py"
 mp_script.write_text("""
 import json, sys, time
 sys.path.insert(0, sys.argv[3])
+import mediapipe as mp
 from deepguard.preprocess import video as V, faces as F
-jobs = json.load(open(sys.argv[1])); det = F.MediaPipeDetector(); out = {}; tt = []
+# new MediaPipe (no legacy API): Tasks API with the verified full-range file
+det = F.MediaPipeDetector(model_path=None if hasattr(mp, 'solutions') else sys.argv[4])
+jobs = json.load(open(sys.argv[1])); out = {}; tt = []
 for j in jobs:
     fr = V.decode_frames(j['path'], j['indices'])
     if j['fix'] is not None:
@@ -329,7 +349,9 @@ for j in jobs:
     t = time.time()
     out[j['path']] = {i: [[*map(float, d.box), float(d.score)] for d in det.detect(f)] for i, f in fr.items()}
     tt.append(time.time() - t)
-json.dump({'dets': out, 'sec_per_video': tt}, open(sys.argv[2], 'w'))
+det.close()
+json.dump({'dets': out, 'sec_per_video': tt, 'mediapipe': mp.__version__, 'api': det.api},
+          open(sys.argv[2], 'w'))
 """)
 jl = [{"path": r.path, "indices": r.indices,
        "fix": [WIDTH["mode"], width_offset(int(r.width))] if (r.dataset == "FFPP" and int(r.width) % 32
@@ -341,17 +363,17 @@ if MOCK:
     py, env = sys.executable, dict(os.environ)
 else:
     log("Installing MediaPipe into its own folder ...")
-    r = sh(f"{sys.executable} -m pip install -q --target {MP_DIR} mediapipe==0.10.14 av", check=False)
+    r = sh(f"{sys.executable} -m pip install -q --target {MP_DIR} mediapipe==1.2.3 av", check=False)
     mp_ok = r.returncode == 0
     py, env = sys.executable, dict(os.environ, PYTHONPATH=str(MP_DIR))
 if mp_ok:
     log("Running MediaPipe on the same frames ...")
     r = subprocess.run([py, str(mp_script), str(OUT / "mp_jobs.json"), str(OUT / "dets_mediapipe.json"),
-                        str(REPO / "src")], capture_output=True, text=True, env=env)
+                        str(REPO / "src"), str(MODELS / MP_REL)], capture_output=True, text=True, env=env)
     mp_ok = r.returncode == 0
     if not mp_ok: print(r.stderr[-1500:])
 mp = json.load(open(OUT / "dets_mediapipe.json")) if mp_ok else None
-log(f"MediaPipe available: {mp_ok}")
+log(f"MediaPipe available: {mp_ok}" + (f" (version {mp['mediapipe']}, {mp['api']} API)" if mp else ""))
 
 def tracks_from(d):
     frames = {int(i): [F.Detection(np.array(b[:4], np.float32), b[4]) for b in bs] for i, bs in d.items()}
@@ -371,17 +393,23 @@ for r in jobs.itertuples():
                       scrfd_frames=len(s_main) if s_main else 0, mp_frames=len(m_main) if m_main else 0,
                       scrfd_miss=(len(union - set(s_main.dets)) if s_main else len(union)) / max(1, len(union)) if agree else np.nan,
                       mp_miss=(len(union - set(m_main.dets)) if m_main else len(union)) / max(1, len(union)) if agree else np.nan,
+                      scrfd_cover=(len(s_main) if s_main else 0) / N_FRAMES,
+                      mp_cover=(len(m_main) if m_main else 0) / N_FRAMES if mp else np.nan,
                       scrfd_short_tracks=s_fp, mp_short_tracks=m_fp))
 cmp_df = pd.DataFrame(crows); cmp_df.to_csv(OUT / "detector_comparison.csv", index=False)
 summ = cmp_df.groupby("dataset").agg(videos=("path", "size"), disagree=("agree", lambda x: int((~x).sum())),
                                      scrfd_miss=("scrfd_miss", "mean"), mp_miss=("mp_miss", "mean"),
+                                     scrfd_cover=("scrfd_cover", "mean"), mp_cover=("mp_cover", "mean"),
                                      no_face_scrfd=("scrfd_frames", lambda x: int((x == 0).sum())),
                                      no_face_mp=("mp_frames", lambda x: int((x == 0).sum())))
 print(summ)
 DET = {"scrfd_miss": float(cmp_df.scrfd_miss.mean()), "mp_miss": float(cmp_df.mp_miss.mean()) if mp else None,
        "disagree_videos": int((~cmp_df.agree).sum()), "videos": len(cmp_df),
        "scrfd_sec_per_video": float(np.mean(t_det)), "decode_sec_per_video": float(np.mean(t_dec)),
-       "mp_sec_per_video": float(np.mean(mp["sec_per_video"])) if mp else None, "mediapipe_available": mp_ok}
+       "mp_sec_per_video": float(np.mean(mp["sec_per_video"])) if mp else None, "mediapipe_available": mp_ok,
+       "scrfd_cover": float(cmp_df.scrfd_cover.mean()),
+       "mp_cover": float(cmp_df.mp_cover.mean()) if mp else None,
+       "mediapipe_version": mp["mediapipe"] if mp else None, "mediapipe_api": mp["api"] if mp else None}
 if not mp_ok:
     DET["winner"], DET["why"] = "scrfd_10g", "MediaPipe could not run here; comparison incomplete (flag)."
 elif abs(DET["scrfd_miss"] - DET["mp_miss"]) > 0.01:

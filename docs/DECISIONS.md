@@ -453,6 +453,19 @@ Implements D-017 and D-018.2. Preprocessing of the full data starts only after i
 
 **Licence note:** the InsightFace models (SCRFD, ArcFace) are for non-commercial research only, which matches D-018.9.
 
+**Stage A result (18 Nov 2026, OUTPUTS.md):**
+- Item 2 width: **DECIDED, centre crop** (480/480 frames).
+- Item 9 budget: **measured**.
+- Items 4 and 6 need the amendments below.
+
+### D-019a/b/c — Amendments after stage A · PROPOSED 2026-11-18
+- **a. DFD face selection uses the official DFD masks** for every DFD fake (`-t masks`, downloaded once). The chosen track is the one whose boxes contain the most mask pixels. Offset matching remains only as a cross-check where it finds a clean match.
+  - *Why:* only 25/50 DFD fakes match their original frame-exactly, so frame differencing cannot pick the right face in walking, pan and two-actor scenes. The masks come from the dataset authors, made at swap time.
+  - *Pass:* at least 95% of DFD fakes have a track that overlaps the mask, and on clean-offset fakes the mask choice agrees with the difference choice in at least 95% of cases.
+- **b. The detector comparison uses YuNet (OpenCV `FaceDetectorYN`, the detector of the Phase 1.1 audit) instead of MediaPipe.** MediaPipe's full-range legacy detector no longer installs on Kaggle's Python 3.13, and its replacement only ships a short-range (selfie) model. The decision rule is unchanged.
+- **c. Tracks are linked by identity as well as position.** Sampled frames are about 1 s apart, so in walking and pan scenes a face can move further than the position rule allows. That splits one person into several short tracks (DFD: 288 short tracks; main track median 30/32, minimum 9). A detection may join a track when its ArcFace embedding matches the track's (cosine ≥ 0.4), whatever its position. Position alone still links when the embedding is unavailable.
+  - *Pass:* DFD main-track coverage ≥ 30/32 frames in at least 90% of videos, with 0 identity merges on the two-actor scenes checked by eye.
+
 ---
 
 ## 2. Roadmap — no phase starts before the previous phase's acceptance test passes
@@ -533,4 +546,5 @@ The numbers are filled in only from OUTPUTS.md.
 | 2026-11-16 (3) | **Celeb-DF v2 on Kaggle:** `mynkey/dg-celebdf-v2` READY. The zip's SHA-256 is `b22f9d74…cb126fa2` and it holds 6,530 files: 590 Celeb-real, 5,639 Celeb-synthesis, 300 YouTube-real and the test list, exactly as the paper states. **GitHub:** `akmayank94/deepguard` connected. `main` = the v1 snapshot (commit `a1ea01c`); the `v1.0` tag must be created by Mayank in the GitHub UI, because tag pushes are refused from this environment. The v2 structure (`legacy/v1/`, `docs/`, notebooks, `src/deepguard`, CI hygiene checks) is on branch `v2-setup` (commit `47c5dd8`), to be merged after the tag exists. **v1 freeze B1 fixed:** v1's `data/` folder holds dataset *code*, so it is now included; deployed-model provenance was added to `SPACE_CHECK.json`. **DFDC:** a chunk link resolves to a signed `storage.googleapis.com` URL valid about 39 h, so a Kaggle notebook can download chunks from fresh links. TERMS.md created. |
 | 2026-11-16 (4) | **v1 freeze DONE (D-001).** `deepguard-v1-frozen` READY (319 files, 1.44 GB). The Space model is identical to `deploy/model.pt` and `run_v2_full_b3/checkpoint_best.pt` (epoch 52, the reported model). Tag `v1.0` created by Mayank on GitHub; `v2-setup` merged into `main`. Phase 0 is complete except the Deepfake-Eval-2024 approval, which only Phase 4 needs. |
 | 2026-11-16 (5) | D-019 Phase 1.2 acceptance test written and confirmed by Mayank. Dev-wild collection started by Mayank (D-018.5). |
+| 2026-11-18 | **Phase 1.2 stage A run** (OUTPUTS.md). D-019.2 width **PASS**: centre crop, 480/480 frames. D-019.9 budget measured (16.6 GB, about 3 h decoding with 4 processes, 1.8 GPU-h). D-019.6 **incomplete**: the MediaPipe full-range detector no longer installs on Kaggle (Python 3.13). D-019.4 pilot **below target**: 82% within the background limit, only 25/50 frame-exact. Amendments D-019a–c PROPOSED. |
 | 2026-11-16 (6) | **Correction:** the Face2Face/NeuralTextures width rule is *floor to a multiple of 32* (282/282, c23 and c40), not 16 (D-017.3, D-019.2, DATASETS.md, OUTPUTS.md). It was found when the width unit test failed on 854 → 832. Also measured from the audit metadata: FF++ is 4:4:4 (yuv444p), DFD 4:2:0; c23 and c40 frames are the same size for all 9,431 pairs. **Shared package `src/deepguard/preprocess` built** (video, faces, crop, select, align, identity, audit, manifest): 36 tests, including the colour test (±1, six formats) and model tests on SCRFD/ArcFace; CI downloads SCRFD-500M with a SHA-256 check. **Stage A notebook** `dg_p12a_detector_width_budget` built and tested end to end on a mock FF++/DFD set with planted facts (centre crop, DFD offsets 17 and 40, two-face video, short fake), and all of them were recovered. |
