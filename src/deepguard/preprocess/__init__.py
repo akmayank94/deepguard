@@ -10,4 +10,4 @@ Modules:
     audit     metadata-only shortcut AUC
     manifest  master-manifest schema and validation
 """
-PREPROCESS_VERSION = "1.2.0"
+PREPROCESS_VERSION = "1.2.1"

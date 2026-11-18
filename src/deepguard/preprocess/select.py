@@ -100,6 +100,48 @@ def select_manipulated(fake: dict[int, np.ndarray], orig: dict[int, np.ndarray],
     return Selection(best, ratios, bg, flags)
 
 
+MASK_MIN_SHARE = 0.5      # best track must hold >= 50% of the mask pixels, else "low_mask_overlap"
+
+
+def select_by_mask(masks: dict[int, np.ndarray], tracks: list[Track],
+                   pad: float = BG_PAD) -> Selection:
+    """Pick the manipulated track from official masks (D-019a, used for DFD).
+
+    masks: frame idx -> HxW bool (True = manipulated pixel), same frames as the fake.
+    For each track: share of all mask pixels (in the frames where the track exists) that
+    fall inside its padded boxes. ``ratios`` holds those shares; the highest wins.
+    """
+    if not tracks:
+        return Selection(None, {}, float("nan"), ["no_track"])
+    total = {i: int(m.sum()) for i, m in masks.items()}
+    if sum(total.values()) == 0:
+        return Selection(None, {}, float("nan"), ["no_mask"])
+    shares = {}
+    for t in tracks:
+        inside = tot = 0
+        for idx, d in t.dets.items():
+            if idx not in masks or total[idx] == 0:
+                continue
+            m = masks[idx]
+            x1, y1, x2, y2 = _clip_box(d.box, m.shape[1], m.shape[0], pad)
+            inside += int(m[y1:y2, x1:x2].sum())
+            tot += total[idx]
+        shares[t.tid] = inside / tot if tot else 0.0
+    best = max(shares, key=shares.get)
+    flags = []
+    if shares[best] < MASK_MIN_SHARE:
+        flags.append("low_mask_overlap")
+    second = sorted(shares.values())[-2] if len(shares) > 1 else 0.0
+    if second >= AMBIGUOUS_SHARE * shares[best] and shares[best] > 0:
+        flags.append("ambiguous")
+    return Selection(best, shares, float("nan"), flags)
+
+
+def mask_from_rgb(rgb: np.ndarray, thresh: int = 127) -> np.ndarray:
+    """Official mask videos are white-on-black; decoded frames -> bool mask."""
+    return rgb.max(axis=2) > thresh
+
+
 def match_track(t: Track, others: list[Track], min_iou: float = 0.3) -> int | None:
     """Track in `others` that overlaps t most (mean IoU on shared frames)."""
     best, best_v = None, min_iou

@@ -1,12 +1,15 @@
 """Face detection and track linking (D-019.3, D-019.6).
 
-Two detectors behind one interface, so Phase 1.2 can choose by measurement:
+Detectors behind one interface, so Phase 1.2 can choose by measurement:
 
 * ``ScrfdDetector``  - SCRFD (InsightFace ``det_10g.onnx`` / ``det_500m.onnx``) via
   onnxruntime. Gives a box, a score and 5 landmarks (eyes, nose, mouth corners).
   The decoding below re-implements InsightFace's ``scrfd.py`` without the package.
-* ``MediaPipeDetector`` - MediaPipe face detection (full-range model). Gives a box,
-  a score and eyes/nose/mouth-centre points; mouth corners are not available.
+* ``YuNetDetector`` - OpenCV's YuNet (``FaceDetectorYN``), the detector of the Phase 1.1
+  audit. Box, score and the same 5 landmarks. Runs on CPU. (D-019b: replaces MediaPipe
+  as the comparison detector, whose full-range model no longer installs on Kaggle.)
+* ``MediaPipeDetector`` - MediaPipe legacy face detection (full-range model), kept for
+  environments that still have ``mediapipe.solutions``. Mouth corners are not available.
 
 Both take RGB uint8 frames and return pixel coordinates in that frame.
 InsightFace models are licensed for non-commercial research only (D-018.9).
@@ -24,6 +27,7 @@ class Detection:
     box: np.ndarray            # x1, y1, x2, y2 (float32, pixels)
     score: float
     kps: np.ndarray | None = None  # 5 x 2 (float32) or None
+    emb: np.ndarray | None = None  # L2-normalised ArcFace embedding, set by identity.embed_detections
 
     @property
     def size(self) -> float:
@@ -152,6 +156,38 @@ MEDIAPIPE_FULL_RANGE = "face_detection_full_range_sparse.tflite"
 MEDIAPIPE_FULL_RANGE_SHA256 = "2c3728e6da56f21e21a320433396fb06d40d9088f2247c05e5635a688d45dfe1"
 
 
+class YuNetDetector:
+    """OpenCV YuNet face detector (face_detection_yunet_2023mar.onnx)."""
+
+    name = "yunet"
+
+    def __init__(self, model_path: str, score_thresh: float = 0.6, nms_thresh: float = 0.3,
+                 top_k: int = 50):
+        self._det = cv2.FaceDetectorYN.create(str(model_path), "", (320, 320), score_thresh,
+                                              nms_thresh, top_k)
+        self._size = (320, 320)
+
+    def detect(self, rgb: np.ndarray) -> list[Detection]:
+        h, w = rgb.shape[:2]
+        if (w, h) != self._size:
+            self._det.setInputSize((w, h))
+            self._size = (w, h)
+        _, faces = self._det.detect(cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))  # YuNet expects BGR
+        out: list[Detection] = []
+        for f in faces if faces is not None else []:
+            x, y, bw, bh = (float(v) for v in f[:4])
+            box = np.array([x, y, x + bw, y + bh], np.float32)
+            box[[0, 2]] = np.clip(box[[0, 2]], 0, w)
+            box[[1, 3]] = np.clip(box[[1, 3]], 0, h)
+            if box[2] - box[0] < 2 or box[3] - box[1] < 2:
+                continue
+            # YuNet order: right eye, left eye, nose, right and left mouth corner (the person's
+            # right is the image's left), the same order as InsightFace.
+            kps = np.asarray(f[4:14], np.float32).reshape(5, 2)
+            out.append(Detection(box, float(f[14]), kps))
+        return out
+
+
 class MediaPipeDetector:
     """MediaPipe BlazeFace full-range detector.
 
@@ -225,11 +261,15 @@ class MediaPipeDetector:
 
 
 def make_detector(name: str, models_dir: str | None = None, **kw):
-    """Factory used by the notebooks: 'scrfd_10g', 'scrfd_500m' or 'mediapipe'."""
+    """Factory used by the notebooks: 'scrfd_10g', 'scrfd_500m', 'yunet' or 'mediapipe'."""
     from pathlib import Path
 
     if name == "mediapipe":
         return MediaPipeDetector(**kw)
+    if name == "yunet":
+        if models_dir is None:
+            raise ValueError("models_dir is required for YuNet")
+        return YuNetDetector(str(Path(models_dir) / "yunet/face_detection_yunet_2023mar.onnx"), **kw)
     files = {"scrfd_10g": "buffalo_l/det_10g.onnx", "scrfd_500m": "buffalo_sc/det_500m.onnx"}
     if name not in files:
         raise ValueError(f"unknown detector {name!r}")
@@ -255,22 +295,45 @@ class Track:
     def mean_score(self) -> float:
         return float(np.mean([d.score for d in self.dets.values()]))
 
+    def mean_emb(self) -> np.ndarray | None:
+        embs = [d.emb for d in self.dets.values() if d.emb is not None]
+        if not embs:
+            return None
+        m = np.mean(embs, axis=0)
+        return m / max(float(np.linalg.norm(m)), 1e-9)
+
     def __len__(self) -> int:
         return len(self.dets)
 
 
+ID_MATCH = 0.4    # cosine >= this: same person, wherever the face moved (D-019c)
+ID_REJECT = 0.2   # cosine < this: different people, even if the boxes overlap
+
+
 def _match_cost(t: Track, d: Detection, iou_min: float, dist_max: float,
-                size_ratio_max: float) -> float | None:
-    """Cost of attaching detection d to track t, or None if not allowed."""
+                size_ratio_max: float, id_match: float = ID_MATCH,
+                id_reject: float = ID_REJECT) -> float | None:
+    """Cost of attaching detection d to track t (lower is better), or None if not allowed.
+
+    With embeddings (D-019c): identity decides. cosine >= id_match links at any position
+    (sampled frames are ~1 s apart, so walking and panning move faces far), and
+    cosine < id_reject never links. In between, the position rule decides.
+    Without embeddings: position rule only (overlap or small centre shift, similar size).
+    """
     last = t.last
     ratio = max(d.size, last.size) / max(1e-6, min(d.size, last.size))
-    if ratio > size_ratio_max:
-        return None
     ov = iou(last.box, d.box)
     dist = float(np.linalg.norm(d.center - last.center)) / max(last.size, d.size)
-    if ov >= iou_min or dist <= dist_max:
+    pos_ok = ratio <= size_ratio_max and (ov >= iou_min or dist <= dist_max)
+    te = t.mean_emb() if d.emb is not None else None
+    if te is not None:
+        sim = float(te @ d.emb)
+        if sim >= id_match and ratio <= 3.0:
+            return -1.0 - sim                  # identity links rank before position links
+        if sim < id_reject or not pos_ok:
+            return None
         return dist - ov
-    return None
+    return dist - ov if pos_ok else None
 
 
 def link_tracks(frames: dict[int, list[Detection]], iou_min: float = 0.3,

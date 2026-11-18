@@ -116,3 +116,27 @@ def test_find_offset_fake_longer_than_rest():
     seq = np.stack([texture(36, 64, seed=i)[:, :, 0] for i in range(50)])
     r = A.find_offset(seq[30:50], seq)        # fake runs to the original's last frame
     assert r.offset == 30 and r.err == 0
+
+
+def test_select_by_mask_picks_masked_face():
+    h, w = 240, 320
+    a, b = (20, 40, 120, 160), (200, 40, 300, 160)
+    masks = {}
+    for i in range(6):
+        m = np.zeros((h, w), bool)
+        m[60:150, 215:290] = True                       # swap region inside face b
+        masks[i] = m
+    sel = S.select_by_mask(masks, tracks_for([a, b], range(6)))
+    assert sel.tid == 1 and sel.ratios[1] > 0.95 and sel.ratios[0] == 0 and not sel.flags
+
+
+def test_select_by_mask_flags():
+    h, w = 240, 320
+    empty = {i: np.zeros((h, w), bool) for i in range(4)}
+    assert S.select_by_mask(empty, tracks_for([(0, 0, 50, 50)], range(4))).flags == ["no_mask"]
+    off = {i: np.zeros((h, w), bool) for i in range(4)}
+    for m in off.values():
+        m[200:230, 250:300] = True                      # mask far from the only face
+    assert "low_mask_overlap" in S.select_by_mask(off, tracks_for([(0, 0, 50, 50)], range(4))).flags
+    rgb = np.zeros((4, 4, 3), np.uint8); rgb[1, 1] = 255; rgb[2, 2] = 100
+    assert S.mask_from_rgb(rgb).sum() == 1

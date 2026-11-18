@@ -116,3 +116,43 @@ def test_mediapipe_tasks_api_same_boxes():
     legacy = [[223, 167, 325, 270], [938, 175, 1026, 263]]
     for a, b in zip(dets, legacy):
         assert np.abs(a.box - np.array(b)).max() <= 4
+
+
+def _emb(seed):
+    v = np.random.default_rng(seed).normal(size=512).astype(np.float32)
+    return v / np.linalg.norm(v)
+
+
+def det_e(x, y, s, e):
+    d = det(x, y, s)
+    d.emb = e
+    return d
+
+
+def test_identity_links_far_jump():
+    a = _emb(1)
+    frames = {0: [det_e(100, 100, 80, a)], 10: [det_e(900, 300, 90, a)], 20: [det_e(400, 150, 85, a)]}
+    assert len(F.link_tracks(frames)) == 1                     # same person, far moves: one track
+    plain = {i: [det(*d.box[:2], d.size)] for i, (d,) in frames.items()}
+    assert len(F.link_tracks(plain)) == 3                      # position-only rule splits it
+
+
+def test_identity_keeps_two_people_apart_when_they_cross():
+    a, b = _emb(1), _emb(2)
+    frames = {0: [det_e(100, 100, 80, a), det_e(400, 100, 80, b)],
+              10: [det_e(110, 100, 80, b), det_e(390, 100, 80, a)]}   # they swapped places
+    tracks = F.link_tracks(frames)
+    assert len(tracks) == 2
+    for t in tracks:
+        sims = [float(d.emb @ t.dets[0].emb) for d in t.dets.values()]
+        assert min(sims) > 0.99                                  # each track holds one person
+
+
+def test_yunet_finds_both_faces():
+    pytest.importorskip("skimage")
+    p = model_path("yunet", "face_detection_yunet_2023mar.onnx")
+    d = F.make_detector("yunet", str(p.parent.parent))
+    dets = sorted(d.detect(_canvas()), key=lambda x: x.box[0])
+    assert len(dets) == 2 and all(x.score > 0.6 for x in dets)
+    assert abs((dets[0].box[0] + dets[1].box[2]) - 2 * 631) < 16
+    assert dets[0].kps[0, 0] < dets[0].kps[1, 0]                 # image-left eye first, like SCRFD

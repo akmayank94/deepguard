@@ -94,3 +94,22 @@ def test_manifest_validation():
     dropped.loc[3, ["n_crops", "split_clean", "drop_reason"]] = [0, "", "short_dfd"]
     assert M.validate(dropped) == []                           # dropped rows may lack crops
     assert M.validate(df.drop(columns=["flags"]))[0].startswith("missing columns")
+
+
+def test_embed_detections_and_identity_tracks():
+    pytest.importorskip("skimage")
+    import cv2
+    from skimage import data
+    from deepguard.preprocess import faces as F
+
+    det = F.make_detector("scrfd_10g", str(model_path("buffalo_l", "det_10g.onnx").parent.parent))
+    emb = I.ArcFaceEmbedder(str(model_path("buffalo_l", "w600k_r50.onnx")))
+    face = cv2.resize(data.astronaut()[0:300, 120:380], (200, 230))
+    frames, dets = {}, {}
+    for k, x in enumerate((50, 900, 400)):                    # the face jumps across the frame
+        f = np.full((720, 1280, 3), 90, np.uint8)
+        f[200:430, x:x + 200] = face
+        frames[k * 10] = f
+        dets[k * 10] = det.detect(f)
+    assert I.embed_detections(frames, dets, emb) == 3
+    assert len(F.link_tracks(dets)) == 1

@@ -65,6 +65,23 @@ class ArcFaceEmbedder:
         return e / np.linalg.norm(e, axis=1, keepdims=True).clip(1e-9)
 
 
+def embed_detections(frames: dict, dets: dict, embedder: "ArcFaceEmbedder") -> int:
+    """Set ``d.emb`` for every detection that has 5 landmarks (one batch per video).
+
+    frames: frame idx -> RGB; dets: frame idx -> list[Detection]. Returns how many were embedded.
+    """
+    todo, crops = [], []
+    for idx, ds in dets.items():
+        for d in ds:
+            if d.kps is not None and idx in frames:
+                todo.append(d)
+                crops.append(norm_crop(frames[idx], d.kps))
+    if crops:
+        for d, e in zip(todo, embedder.embed(crops)):
+            d.emb = e
+    return len(todo)
+
+
 def cluster(emb: np.ndarray, thresh: float) -> np.ndarray:
     """Connected components of the graph 'cosine >= thresh' (union-find). Labels 0..k-1."""
     e = emb / np.linalg.norm(emb, axis=1, keepdims=True).clip(1e-9)
